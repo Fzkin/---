@@ -1,0 +1,189 @@
+#   导入tseed.csv 数据  如果R 内存中有，Environment 有，以下两句不需要
+if(nrow(tseed)<1){
+  tseed = read.csv('/Users/zhoudaoxian/Desktop/tseed.csv',header = T,sep = ',')
+  tseed = tseed[,-1]
+}
+ppop_sets = c('MGTCB','EMTCB','CLTCB','DFTCB','CLTCV','DFTCV',
+              'KSTCV','LGTCV','PETCV','FFTCB','KSTCB','LGTCB','PATCB',
+              'SOTCB','GEEGB','HYTCB','NGTCB','NUEGB','WYEGB','WWTCB','TETCB')
+
+TPOPP = tseed[tseed$MSN == 'TPOPP',c(1:5)] 
+names(TPOPP)[4] = 'TPOPP'
+for (i in ppop_sets){
+  expr = parse(text = paste(i,' = ','tseed[tseed$MSN == \'',i,'\',c(1:5)]',sep = ''))
+  eval(expr) 
+  expr = parse(text = paste('names(',i,')[4] = \'',i,'\'',sep = ''))
+  eval(expr)
+  expr = parse(text = i)
+  
+  TPOPP = left_join(TPOPP,eval(expr)[,c(2:4)],by = c("StateCode","Year"))
+  eval(expr)
+}
+rm(list = ppop_sets)
+rm(expr,i,ppop_sets)
+TPOPP[is.na(TPOPP)] <- 0  # 去除对应NA值 变成0
+
+TPOPP = TPOPP[,-c(1,5)]
+
+TPOPP = TPOPP %>%
+  mutate(p1 = (MGTCB - EMTCB)/TPOPP,p2 = CLTCB /TPOPP,p3 = DFTCB/TPOPP,
+         ppE = GEEGB +  HYTCB  +  NGTCB + NUEGB + SOTCB + WYEGB + WWTCB
+  ) %>%
+  mutate(ppT = TETCB - ppE) %>%
+  mutate(CE = ppE/ppT)
+
+# ---------------------------------------
+e_sets = c('EMACB','EMCCB','GECCB','HYCCB','WDCCB','WSCCB',
+           'EMICB' ,'GEICB','HYICB','WDICB','WSICB','GEEGB' ,'HYEGB','SOEGB','WYEGB','GERCB' , 'WDRCB'
+           , 'CLACB','NNACB','CLCCB', 'NNCCB','CLICB','NNICB','NUEGB','CLRCB', 'NNRCB')
+UPART = TPOPP[,c(1,2)]
+for (i in e_sets){
+  expr = parse(text = paste(i,' = ','tseed[tseed$MSN == \'',i,'\',c(1:5)]',sep = ''))
+  eval(expr) 
+  expr = parse(text = paste('names(',i,')[4] = \'',i,'\'',sep = ''))
+  eval(expr)
+  expr = parse(text = i)
+  
+  UPART = left_join(UPART,eval(expr)[,c(2:4)],by = c("StateCode","Year"))
+  eval(expr)
+}
+rm(list = e_sets)
+rm(expr,i)
+
+
+UPART[is.na(UPART)] <- 0 
+UPART = UPART %>%
+  mutate(pAC = EMACB,
+         pCC = EMCCB + GECCB+HYCCB+WDCCB+WSCCB,
+         pIC = EMICB + GEICB+HYICB+WDICB+WSICB,
+         pEG = GEEGB + HYEGB+SOEGB+WYEGB,
+         pRC = GERCB + WDRCB,
+         uAC = CLACB + NNACB,
+         uCC = CLCCB + NNCCB,
+         uIC = CLICB + NNICB,
+         uEG = NUEGB,
+         uRC = CLRCB + NNRCB
+  ) %>%
+  mutate(AC = pAC+uAC,CC = pCC+uCC,IC = uIC+pIC,EG=uEG+pEG,RC=uRC+pRC,
+         u_polution=uAC+uCC+uIC+uEG+uRC,
+         pClean = pAC+pCC+pIC+pEG+pRC)
+# sUPART = cbind(UPART[,c(1:2)],scale(UPART[,-c(1:2)],center = F))   最终数据再做标准化
+
+usePart = UPART[,c(1,2,29:ncol(UPART))]
+
+
+#   构建全部各个维度的数据指标
+aPPALLd = left_join(TPOPP,usePart,by = c("StateCode","Year"))
+
+# 构建时间序列  选取 特征
+feature = aPPALLd[,c(1,2,24:ncol(aPPALLd))]
+
+#  标准化数据
+Sdfeature = cbind(feature[,c(1:2)],scale(feature[,-c(1:2)],center = F)) 
+# 转化为矩阵 方可构建时间序列
+library(stats)
+# temp = ts(data = Sfeature, start = 1960, end = 2009, frequency = 1,
+#   deltat = 1, ts.eps = getOption("ts.eps"), class = , names = )
+
+write.csv(feature,file = '/Users/zhoudaoxian/Desktop/最终指标数据.csv',row.names = F)
+
+
+#    -----ieda
+#    sfeature = mutate(滞后1,v1,v2,v3,v4,v5 
+#                    分别等于 = 查表自身，前移取特征值Y，取特征值相关因素值,
+#                    若查找不到，则将数据相应项设置为NA)
+# CE ppT ppE
+
+#  ------------------------建立时间滞后指标-------------
+"  时间滞后相关性 特征处理 ------- " == 0
+"（1）生成特征后缀子名 （2）针对后缀子 做特征滞后处理 （3）分子集分别处理  合并 " == '_________'
+
+feature$Year = paste(feature$Year,'01','01',sep = '-')
+temp = dplyr::arrange(feature,StateCode,desc(Year))  
+seriesname =c('CE1','CE2','CE3','CE4','CE5','CE6','CE7','CE8','CE9')
+
+cleanEnergynName =c('CE1','CE2','CE3','CE4','CE5','CE6','CE7','CE8','CE9')
+
+"#    expr = parse(text = paste('temp$',seriesname[j],sep = '')) 先建时间滞后指标"==0
+
+t_s_data =  function(seriesname,temp){
+      for (j in 1:length(seriesname)){  # 下标访问
+        expr = parse(text = paste('temp$',seriesname[j],'=0',sep = ''))
+        eval(expr)
+      }
+      #   -----数据搬移算法----------------
+      tempj = temp[1,]
+      tempj = tempj[-1,]
+      for (i in unique(temp$StateCode)){
+        tempi = dplyr::filter(temp,StateCode == i)
+        '# --- 对某个州..子集  某维度 做时间滞后处理的算法 -----' == 0
+        for (j in 1:length(seriesname)){  # 下标访问
+          expr = parse(text = 
+                         paste('tempi$',seriesname[j],
+                               '= tempi[','j+1:nrow(tempi),','\'CE\']',sep = ''))
+          eval(expr)
+        }
+        tempj = rbind(tempj,tempi)
+      }
+      
+      sfeature = tempj
+      rm(i,j,expr,tempi,temp,tempj)
+      sfeature[is.na(sfeature)] <- 0 
+      sfeature
+}
+
+#  线性回归
+    library(xts)    
+    # --- 这波很强势
+    
+      for (i in unique(sfeature$StateCode)){
+        for(j in 3:ncol(sfeature)){
+          t1 = sfeature %>%
+            filter(StateCode == i) 
+          temp = xts(t1[,j],
+                     order.by =  as.Date(t1$Year))
+          #jpeg(file=paste("myplot.",names(t1)[j],".jpeg",sep = ''))
+          #plot.ts(ts(temp)) # 使用存为文件的方法
+          #dev.off()
+          
+          xl<-ts(t1[,j],start = 1,end = 150,frequency = 1,ts.eps = getOption("ts.eps"), class = , names = names(t1)[j])
+          plot.ts(xl)
+          model<-holt(xl,gamma=FALSE,l.start= 1,b.start=50,h = 41)
+          jpeg(file=paste("predict.",names(t1)[j],".jpeg",sep = ''))
+          plot(model)      
+          dev.off()
+      }
+      }
+    library(randomForest)
+    lm_train = sfeature[1:nrow(sfeature)*70/100,]
+    lm_test = sfeature[nrow(sfeature)*70/100:nrow(sfeature),]
+    model_lm = lm(CE~TETCB,data = lm_train)
+    summary(model_lm)
+    test_rel = predict.lm(model_lm,newdata = lm_test[,-c(9)])
+    plot(lm_train$TETCB,lm_train$CE)
+    lines(lm_train$TETCB,predict(model_lm))
+    plot(predict(model_lm,type = "response"),residuals(model_lm,type = "deviance"))
+    plot(hatvalues(model_lm))
+    identify(1:101,hatvalues(model_lm),names(hatvalues(model_lm)))
+    
+    factor_Corr <- cor(voice_Original[,-c(9,21)])
+    corrplot(factor_Corr,method="number")
+    predict()
+    
+    
+    t = sfeature
+    plot(t$CE,t$TETCB)
+
+'
+#  计算变量相关洗漱的P值， cor___  use = \'pairwise.complete.obs\'   
+#  0------将数据整理成dataframe 形式    
+#  选择与 Income     相关系数绝对值大于 0.2   的数据集'
+    selectedSub<-subset(corList,(abs(cor)>0.2 & j =="Income"))    
+
+
+
+
+
+
+  
+
